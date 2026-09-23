@@ -1,0 +1,54 @@
+# ============================
+# AgriGuide RAG — .gitignore
+# ============================
+
+# --- Environment & Secrets ---
+.env
+.env.*
+*.env
+secrets/
+
+# --- Python ---
+venv/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+*.egg
+.Python
+
+# --- Qdrant local storage ---
+qdrant_storage/
+
+# --- BGE-M3 / HuggingFace model cache ---
+models/
+*.bin
+*.safetensors
+*.pt
+*.pth
+
+# --- Node / Frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.*
+
+# --- Logs ---
+*.log
+logs/
+
+# --- OS files ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE ---
+.vscode/
+.idea/
+
+# --- Documents (local knowledge base source files — optional) ---
+# Uncomment if you do NOT want to upload the raw PDFs/text to GitHub:
+# documents/
