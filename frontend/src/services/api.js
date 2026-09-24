@@ -1,83 +1,100 @@
-/**
- * Centralized API Service for AgriGuide
- * Connects directly to the existing FastAPI backend.
- */
+const DIRECT_API_URL = "http://127.0.0.1:8000";
 
-// In development, the Vite server proxies /chat and /health to http://127.0.0.1:8000
-// to seamlessly navigate browser CORS without modifying the backend.
-const DIRECT_API_URL = 'http://127.0.0.1:8000';
-const PROXY_ENABLED = true;
+const PROXY_ENABLED = import.meta.env.DEV;
 
-const BASE_URL = PROXY_ENABLED ? '' : DIRECT_API_URL;
+const CONFIGURED_API_URL = (
+  import.meta.env.VITE_API_URL || ""
+).trim();
 
-/**
- * Check backend health status
- * @returns {Promise<{ online: boolean, data?: any }>}
- */
-export async function checkBackendHealth() {
+const BASE_URL = PROXY_ENABLED
+  ? ""
+  : (CONFIGURED_API_URL || DIRECT_API_URL);
+
+
+// --------------------------------------------------
+// Helper
+// --------------------------------------------------
+
+async function parseResponse(response) {
+  let data = null;
+
   try {
-    const url = `${BASE_URL}/health`;
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-      },
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      return { online: true, data };
-    }
-    return { online: false };
-  } catch (error) {
-    console.warn('[AgriGuide API] Health check failed:', error.message);
-    return { online: false, error: error.message };
+    data = await response.json();
+  } catch {
+    data = null;
   }
+
+  if (!response.ok) {
+    const message =
+      data?.detail ||
+      data?.message ||
+      `Request failed with status ${response.status}`;
+
+    throw new Error(message);
+  }
+
+  return data;
 }
 
-/**
- * Send a user question to the AgriGuide RAG backend
- * @param {string} question
- * @returns {Promise<{ question: string, answer: string }>}
- */
-export async function sendChatMessage(question) {
+
+// --------------------------------------------------
+// Backend health check
+// --------------------------------------------------
+
+export async function checkHealth() {
+  const response = await fetch(
+    `${BASE_URL}/health`,
+    {
+      method: "GET",
+      headers: {
+        Accept: "application/json",
+      },
+    }
+  );
+
+  return parseResponse(response);
+}
+
+
+// --------------------------------------------------
+// Send chat message
+// --------------------------------------------------
+
+export async function sendChatMessage(
+  question,
+  idToken = null
+) {
   if (!question || !question.trim()) {
-    throw new Error('Question cannot be empty');
+    throw new Error("Question cannot be empty.");
   }
 
-  const endpoint = `${BASE_URL}/chat`;
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
 
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ question: question.trim() }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text().catch(() => '');
-      console.error('[AgriGuide API] Server error response:', response.status, errorText);
-      throw new Error(`Server returned status ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    if (!data || typeof data.answer === 'undefined') {
-      throw new Error('Unexpected response format from server');
-    }
-
-    return {
-      question: data.question || question,
-      answer: data.answer,
-    };
-  } catch (error) {
-    console.error('[AgriGuide API] Chat request failed:', error);
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
-      throw new Error("AgriGuide couldn't connect to the server. Please make sure the FastAPI backend is running.");
-    }
-    throw error;
+  // Firebase authentication token
+  if (idToken) {
+    headers.Authorization = `Bearer ${idToken}`;
   }
+
+  const response = await fetch(
+    `${BASE_URL}/chat`,
+    {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        question: question.trim(),
+      }),
+    }
+  );
+
+  return parseResponse(response);
 }
+
+
+// --------------------------------------------------
+// Export API configuration
+// --------------------------------------------------
+
+export const API_BASE_URL = BASE_URL;

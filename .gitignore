@@ -7,6 +7,8 @@
 .env.*
 *.env
 secrets/
+*firebase-adminsdk*.json
+serviceAccountKey*.json
 
 # --- Python ---
 venv/

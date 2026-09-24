@@ -1,296 +1,340 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import Sidebar from './components/Sidebar';
-import Header from './components/Header';
-import ChatWindow from './components/ChatWindow';
-import { checkBackendHealth, sendChatMessage } from './services/api';
+import { useEffect, useMemo, useRef, useState } from "react";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import { Leaf } from "lucide-react";
 
-// ─── localStorage helpers ─────────────────────────────────────────────────────
+import { auth } from "./firebase";
+import Auth from "./components/Auth";
+import Header from "./components/Header";
+import Sidebar from "./components/Sidebar";
+import ChatWindow from "./components/ChatWindow";
+import ChatInput from "./components/ChatInput";
+import { sendChatMessage, checkHealth } from "./services/api";
 
-const STORAGE_KEY = 'agriguide_chats';
+import "./app.css";
 
-function loadFromStorage() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { conversations: [], activeConversationId: null };
-    return JSON.parse(raw);
-  } catch {
-    return { conversations: [], activeConversationId: null };
-  }
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
-function saveToStorage(conversations, activeConversationId) {
-  try {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ conversations, activeConversationId })
-    );
-  } catch (e) {
-    console.warn('[AgriGuide] Could not save chat history:', e);
-  }
-}
-
-// ─── Utilities ────────────────────────────────────────────────────────────────
-
-function generateId() {
-  return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-}
-
-/**
- * Generate a clean, short title from the first user message.
- * Strips filler words and trims to ≤35 characters.
- */
-function generateTitle(firstUserMessage) {
-  const fillers = [
-    'i want to', 'i would like to', 'i need to', 'i am going to',
-    'i plan to', 'can you', 'could you', 'please', 'help me',
-    'tell me about', 'what is', 'what are', 'how to', 'how do i',
-    'what should i do', 'how can i', 'naan', 'nan', 'en',
-    'ennoda', 'epdi', 'eppadi', 'edhavadhu', 'edhuvadhu',
-  ];
-
-  let text = firstUserMessage.trim();
-
-  // Remove punctuation at the end
-  text = text.replace(/[?.!]+$/, '').trim();
-
-  // Strip filler prefixes (case-insensitive)
-  const lower = text.toLowerCase();
-  for (const filler of fillers) {
-    if (lower.startsWith(filler + ' ')) {
-      text = text.slice(filler.length).trim();
-      break;
-    }
-  }
-
-  // Capitalize first letter
-  if (text.length > 0) {
-    text = text.charAt(0).toUpperCase() + text.slice(1);
-  }
-
-  // Truncate to 35 chars cleanly
-  if (text.length > 35) {
-    const truncated = text.slice(0, 35);
-    const lastSpace = truncated.lastIndexOf(' ');
-    text = lastSpace > 20 ? truncated.slice(0, lastSpace) : truncated;
-    text += '…';
-  }
-
-  return text || 'Agriculture Question';
-}
+const STORAGE_KEY = "agriguide_conversations";
 
 function createNewConversation() {
   return {
-    id: generateId(),
-    title: 'New Conversation',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    id: crypto.randomUUID(),
+    title: "New conversation",
     messages: [],
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
   };
 }
 
-// ─── App ──────────────────────────────────────────────────────────────────────
+function loadConversations() {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return [createNewConversation()];
+    const parsed = JSON.parse(saved);
+    if (!Array.isArray(parsed) || parsed.length === 0) return [createNewConversation()];
+    return parsed;
+  } catch {
+    return [createNewConversation()];
+  }
+}
+
+function getTitle(question) {
+  const q = question.trim();
+  if (!q) return "New conversation";
+  return q.length <= 36 ? q : `${q.slice(0, 36)}...`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// App Component
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [isOnline, setIsOnline] = useState(false);
-  const [isCheckingHealth, setIsCheckingHealth] = useState(true);
-  const [language, setLanguage] = useState('en');
+  // Auth
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  // ── Conversation state loaded from localStorage ──
-  const [conversations, setConversations] = useState(() => {
-    const stored = loadFromStorage();
-    return stored.conversations;
-  });
+  // Conversations
+  const [conversations, setConversations] = useState(loadConversations);
+  const [activeConversationId, setActiveConversationId] = useState(
+    () => loadConversations()[0]?.id || null
+  );
 
-  const [activeConversationId, setActiveConversationId] = useState(() => {
-    const stored = loadFromStorage();
-    return stored.activeConversationId;
-  });
+  // UI state
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
+  const [language, setLanguage] = useState("en");
+  const [isSending, setIsSending] = useState(false);
+  const [chatError, setChatError] = useState(null);
 
-  // Derived: active conversation object
-  const activeConversation = conversations.find(c => c.id === activeConversationId) || null;
-  const messages = activeConversation ? activeConversation.messages : [];
+  // Backend
+  const [backendStatus, setBackendStatus] = useState("checking");
 
-  // Ref to track if we need to persist (avoid double-persist on mount)
-  const didMountRef = useRef(false);
-
-  // Persist whenever conversations or activeId changes (not on initial mount)
+  // ── Firebase Auth Listener ────────────────────────────────────────────────
   useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
-    }
-    saveToStorage(conversations, activeConversationId);
-  }, [conversations, activeConversationId]);
-
-  // ── Health polling ──────────────────────────────────────────────────────────
-  const checkHealth = useCallback(async () => {
-    const res = await checkBackendHealth();
-    setIsOnline(res.online);
-    setIsCheckingHealth(false);
-  }, []);
-
-  useEffect(() => {
-    checkHealth();
-    const id = setInterval(checkHealth, 30000);
-    return () => clearInterval(id);
-  }, [checkHealth]);
-
-  // ── Conversation CRUD ───────────────────────────────────────────────────────
-
-  /** Update a conversation's data immutably */
-  const updateConversation = useCallback((convId, updater) => {
-    setConversations(prev =>
-      prev.map(c => (c.id === convId ? { ...c, ...updater(c) } : c))
-    );
-  }, []);
-
-  /** Create a brand-new conversation and make it active */
-  const handleNewChat = useCallback(() => {
-    const newConv = createNewConversation();
-    setConversations(prev => [newConv, ...prev]);
-    setActiveConversationId(newConv.id);
-    setError(null);
-    if (window.innerWidth < 768) setSidebarOpen(false);
-  }, []);
-
-  /** Switch to an existing conversation */
-  const handleSelectConversation = useCallback((convId) => {
-    setActiveConversationId(convId);
-    setError(null);
-    if (window.innerWidth < 768) setSidebarOpen(false);
-  }, []);
-
-  /** Delete a conversation */
-  const handleDeleteConversation = useCallback((convId) => {
-    setConversations(prev => {
-      const updated = prev.filter(c => c.id !== convId);
-      // If deleted the active one, switch to the next available
-      if (convId === activeConversationId) {
-        const newActive = updated.length > 0 ? updated[0].id : null;
-        setActiveConversationId(newActive);
-      }
-      return updated;
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+      setAuthLoading(false);
     });
-  }, [activeConversationId]);
+    return unsubscribe;
+  }, []);
 
-  // ── Send Message ────────────────────────────────────────────────────────────
+  // ── Persist Conversations ─────────────────────────────────────────────────
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
+  }, [conversations]);
 
-  const handleSendMessage = useCallback(async (questionText) => {
-    if (!questionText || !questionText.trim() || isLoading) return;
+  // ── Backend Health Check ──────────────────────────────────────────────────
+  useEffect(() => {
+    let mounted = true;
+    const check = async () => {
+      try {
+        await checkHealth();
+        if (mounted) setBackendStatus("online");
+      } catch {
+        if (mounted) setBackendStatus("offline");
+      }
+    };
+    check();
+    const interval = setInterval(check, 30000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
-    const trimmed = questionText.trim();
+  // ── Responsive Sidebar ────────────────────────────────────────────────────
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth <= 768) {
+        setSidebarOpen(false);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
-    // If no active conversation, create one automatically
-    let currentConvId = activeConversationId;
-    if (!currentConvId) {
+  // ── Active Conversation ───────────────────────────────────────────────────
+  const activeConversation = useMemo(
+    () => conversations.find((c) => c.id === activeConversationId) || null,
+    [conversations, activeConversationId]
+  );
+
+  // ── New Conversation ──────────────────────────────────────────────────────
+  const handleNewConversation = () => {
+    const newConv = createNewConversation();
+    setConversations((prev) => [newConv, ...prev]);
+    setActiveConversationId(newConv.id);
+    setChatError(null);
+  };
+
+  // ── Select Conversation ───────────────────────────────────────────────────
+  const handleSelectConversation = (id) => {
+    setActiveConversationId(id);
+    setChatError(null);
+  };
+
+  // ── Delete Conversation ───────────────────────────────────────────────────
+  const handleDeleteConversation = (event, conversationId) => {
+    if (event) event.stopPropagation();
+
+    setConversations((prev) => {
+      const remaining = prev.filter((c) => c.id !== conversationId);
+      if (remaining.length === 0) {
+        const fresh = createNewConversation();
+        setActiveConversationId(fresh.id);
+        return [fresh];
+      }
+      if (conversationId === activeConversationId) {
+        setActiveConversationId(remaining[0].id);
+      }
+      return remaining;
+    });
+  };
+
+  // ── Send Message ──────────────────────────────────────────────────────────
+  const handleSendMessage = async (question) => {
+    if (!question?.trim() || isSending) return;
+    if (!user) return;
+
+    setChatError(null);
+    const trimmedQuestion = question.trim();
+
+    // Ensure an active conversation exists
+    let conversationId = activeConversationId;
+    if (!conversationId) {
       const newConv = createNewConversation();
-      setConversations(prev => [newConv, ...prev]);
-      setActiveConversationId(newConv.id);
-      currentConvId = newConv.id;
+      conversationId = newConv.id;
+      setConversations((prev) => [newConv, ...prev]);
+      setActiveConversationId(conversationId);
     }
 
-    const userMsgId = `user-${generateId()}`;
-    const now = new Date().toISOString();
+    const userMessage = {
+      id: crypto.randomUUID(),
+      role: "user",
+      content: trimmedQuestion,
+      timestamp: Date.now(),
+    };
 
-    // Append user message immediately
-    setConversations(prev =>
-      prev.map(c => {
-        if (c.id !== currentConvId) return c;
-        const newMessages = [
-          ...c.messages,
-          { id: userMsgId, role: 'user', text: trimmed, timestamp: now },
-        ];
-        // Auto-title from first user message
-        const isFirstUserMsg = c.messages.every(m => m.role !== 'user');
+    // Immediately show user message
+    setConversations((prev) =>
+      prev.map((conv) => {
+        if (conv.id !== conversationId) return conv;
+        const isFirst = conv.messages.length === 0;
         return {
-          ...c,
-          messages: newMessages,
-          title: isFirstUserMsg ? generateTitle(trimmed) : c.title,
-          updatedAt: now,
+          ...conv,
+          title: isFirst ? getTitle(trimmedQuestion) : conv.title,
+          messages: [...conv.messages, userMessage],
+          updatedAt: Date.now(),
         };
       })
     );
 
-    setIsLoading(true);
-    setError(null);
+    setIsSending(true);
 
     try {
-      const response = await sendChatMessage(trimmed);
+      const idToken = await user.getIdToken();
+      const response = await sendChatMessage(trimmedQuestion, idToken);
 
-      const assistantMsgId = `assistant-${generateId()}`;
-      const answerTime = new Date().toISOString();
+      const assistantMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content:
+          response?.answer ||
+          "I couldn't generate a response. Please try again.",
+        timestamp: Date.now(),
+      };
 
-      setConversations(prev =>
-        prev.map(c => {
-          if (c.id !== currentConvId) return c;
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== conversationId) return conv;
           return {
-            ...c,
-            messages: [
-              ...c.messages,
-              {
-                id: assistantMsgId,
-                role: 'assistant',
-                text: response.answer,
-                timestamp: answerTime,
-              },
-            ],
-            updatedAt: answerTime,
+            ...conv,
+            messages: [...conv.messages, assistantMessage],
+            updatedAt: Date.now(),
+          };
+        })
+      );
+    } catch (error) {
+      console.error("[AgriGuide] Send message failed:", error);
+
+      const errorMessage = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        isError: true,
+        content:
+          error?.message ||
+          "Something went wrong connecting to AgriGuide AI. Please check the backend and try again.",
+        timestamp: Date.now(),
+      };
+
+      setConversations((prev) =>
+        prev.map((conv) => {
+          if (conv.id !== conversationId) return conv;
+          return {
+            ...conv,
+            messages: [...conv.messages, errorMessage],
+            updatedAt: Date.now(),
           };
         })
       );
 
-      setIsOnline(true);
-    } catch (err) {
-      console.error('[App] Failed to get response:', err);
-      let msg = 'Something went wrong. Please try again.';
-      if (
-        err.message.includes("couldn't connect") ||
-        err.message.includes('Failed to fetch') ||
-        err.message.includes('NetworkError')
-      ) {
-        msg = "AgriGuide couldn't connect to the server. Please make sure the backend is running.";
-        setIsOnline(false);
-      }
-      setError(msg);
+      setChatError(
+        error?.message || "Failed to contact AgriGuide AI. Is the backend running?"
+      );
     } finally {
-      setIsLoading(false);
+      setIsSending(false);
     }
-  }, [activeConversationId, isLoading]);
+  };
 
-  // ─────────────────────────────────────────────────────────────────────────────
+  // ── Logout ────────────────────────────────────────────────────────────────
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("[AgriGuide] Logout failed:", error);
+    }
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER: Auth Loading
+  // ─────────────────────────────────────────────────────────────────────────
+
+  if (authLoading) {
+    return (
+      <div className="app-auth-loading">
+        <div className="auth-loading-card">
+          <div className="loading-leaf-icon">
+            <Leaf size={32} />
+          </div>
+          <h2 className="loading-brand-name">AgriGuide</h2>
+          <p className="loading-text">Preparing your farming assistant...</p>
+          <div className="loading-spinner-bar" />
+        </div>
+      </div>
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER: Not Logged In → Show Auth
+  // ─────────────────────────────────────────────────────────────────────────
+
+  if (!user) {
+    return <Auth onLogin={setUser} />;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER: Main Application
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="app-container">
+    <div className="agriguide-app-shell">
+      {/* ── Sidebar ─────────────────────────────────────────────────── */}
       <Sidebar
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
-        onNewChat={handleNewChat}
+        onNewChat={handleNewConversation}
         conversations={conversations}
         activeConversationId={activeConversationId}
         onSelectConversation={handleSelectConversation}
         onDeleteConversation={handleDeleteConversation}
+        user={user}
+        onLogout={handleLogout}
       />
 
-      <div className="main-wrapper">
+      {/* ── Main Content Area ────────────────────────────────────────── */}
+      <div className="agriguide-main-area">
+        {/* Header */}
         <Header
-          onToggleSidebar={() => setSidebarOpen(prev => !prev)}
-          isOnline={isOnline}
-          isCheckingHealth={isCheckingHealth}
+          onToggleSidebar={() => setSidebarOpen((prev) => !prev)}
+          backendStatus={backendStatus}
           language={language}
           onLanguageChange={setLanguage}
         />
 
-        <ChatWindow
-          messages={messages}
-          isLoading={isLoading}
-          error={error}
-          language={language}
-          onSendMessage={handleSendMessage}
-          onClearError={() => setError(null)}
-        />
+        {/* Chat Window (messages or welcome) */}
+        <div className="agriguide-chat-section">
+          <ChatWindow
+            messages={activeConversation?.messages || []}
+            isLoading={isSending}
+            error={chatError}
+            language={language}
+            onSendMessage={handleSendMessage}
+            onClearError={() => setChatError(null)}
+          />
+        </div>
+
+        {/* Fixed Chat Input Area */}
+        <div className="agriguide-input-area">
+          <ChatInput
+            onSendMessage={handleSendMessage}
+            disabled={isSending || backendStatus === "offline"}
+            language={language}
+          />
+          <p className="input-disclaimer">
+            AgriGuide provides agricultural guidance based on your farming knowledge base. Always consult local agriculture experts for critical decisions.
+          </p>
+        </div>
       </div>
     </div>
   );

@@ -1,8 +1,8 @@
 """
 Query resolver for AgriGuide.
 
-Converts follow-up questions into standalone English search queries
-suitable for BGE-M3 / Qdrant retrieval.
+Converts follow-up questions into standalone search queries
+suitable for Gemini Embedding 2 / Qdrant retrieval.
 
 Supports:
 - Tamil follow-up questions
@@ -10,6 +10,7 @@ Supports:
 - Tamil-English mixed questions
 - Context-aware query expansion
 """
+
 
 import re
 
@@ -110,7 +111,7 @@ def _build_english_search_query(question, crop, subtopic):
     """
     Build an English search query from the question + context.
 
-    The query is used for BGE-M3 vector search. English works well
+    The query is used for vector search. English works well
     because the documents are in English.
     """
     parts = []
@@ -144,7 +145,8 @@ def _build_english_search_query(question, crop, subtopic):
 def resolve_search_query(question, conversation_topic=None, conversation_state=None):
     """
     Convert the user's question (possibly Tamil, follow-up, or short)
-    into an English-enriched standalone search query for BGE-M3 retrieval.
+    into an enriched standalone search query for vector retrieval.
+
 
     Parameters
     ----------

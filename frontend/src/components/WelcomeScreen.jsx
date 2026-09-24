@@ -1,140 +1,196 @@
 import React from 'react';
-import { Sprout, Sparkles, ArrowRight } from 'lucide-react';
+import {
+  Sprout,
+  ArrowRight,
+  Sparkles,
+} from 'lucide-react';
 
 const SUGGESTIONS = {
   en: [
     {
+      id: 'paddy-fertilizer',
+      icon: '🌾',
+      title: 'Paddy fertilizer',
+      desc: 'NPK ratio, basal dose & top dressing schedules',
+      question: 'What is the recommended fertilizer schedule and NPK dosage for paddy?',
+      color: '#166534',
+    },
+    {
+      id: 'crop-disease',
+      icon: '🐛',
+      title: 'Crop disease identification',
+      desc: 'Leaf blast, blight symptoms & bio-fungicides',
+      question: 'How can I identify and manage common crop diseases like leaf blast and blight?',
+      color: '#b45309',
+    },
+    {
+      id: 'pest-management',
+      icon: '🦋',
+      title: 'Pest management',
+      desc: 'Integrated pest management (IPM) & organic traps',
+      question: 'What are effective organic and bio-control methods for crop pest management?',
+      color: '#047857',
+    },
+    {
+      id: 'crop-cultivation',
       icon: '🌱',
-      tag: 'Crops',
-      title: 'Crop Cultivation',
-      question: 'How can I improve crop cultivation and yield for paddy?',
+      title: 'Crop cultivation guidance',
+      desc: 'Soil prep, seed treatment & spacing techniques',
+      question: 'What are best cultivation practices to maximize crop yield and soil health?',
+      color: '#15803d',
     },
     {
-      icon: '🦠',
-      tag: 'Protection',
-      title: 'Disease & Pest Control',
-      question: 'How can farmers detect and manage common crop diseases and pests?',
+      id: 'irrigation-guidance',
+      icon: '💧',
+      title: 'Irrigation guidance',
+      desc: 'Drip systems, critical watering stages & conservation',
+      question: 'What is the optimal irrigation schedule and water conservation method for crops?',
+      color: '#0369a1',
     },
     {
-      icon: '🧪',
-      tag: 'Nutrition',
-      title: 'Fertilizer & Soil Health',
-      question: 'What is the recommended fertilizer schedule and nutrient dosage?',
-    },
-    {
-      icon: '📋',
-      tag: 'Schemes',
-      title: 'Government Schemes',
-      question: 'What financial subsidies and agricultural government schemes are available?',
+      id: 'gov-schemes',
+      icon: '🏛️',
+      title: 'Government schemes',
+      desc: 'PM-Kisan, crop insurance & subsidy programs',
+      question: 'What agricultural government schemes, subsidies, and grants are available for farmers?',
+      color: '#7c3aed',
     },
   ],
   ta: [
     {
+      id: 'paddy-fertilizer',
+      icon: '🌾',
+      title: 'நெல் பயிர் உரம்',
+      desc: 'NPK விகிதம், அடி உரம் மற்றும் மேலுர அட்டவணை',
+      question: 'நெல் பயிருக்கு பரிந்துரைக்கப்பட்ட உரம் மற்றும் NPK அளவு என்ன?',
+      color: '#166534',
+    },
+    {
+      id: 'crop-disease',
+      icon: '🐛',
+      title: 'பயிர் நோய் கண்டறிதல்',
+      desc: 'இலை கருகல் அறிகுறிகள் மற்றும் தடுப்பு முறைகள்',
+      question: 'இலை கருகல் போன்ற பயிர் நோய்களை எவ்வாறு கண்டறிந்து நிர்வகிப்பது?',
+      color: '#b45309',
+    },
+    {
+      id: 'pest-management',
+      icon: '🦋',
+      title: 'பூச்சி மேலாண்மை',
+      desc: 'ஒருங்கிணைந்த பூச்சி கட்டுப்பாடு மற்றும் இயற்கை மருந்துகள்',
+      question: 'பயிர் பூச்சி மேலாண்மைக்கான இயற்கை மற்றும் உயிரியல் முறைகள் என்ன?',
+      color: '#047857',
+    },
+    {
+      id: 'crop-cultivation',
       icon: '🌱',
-      tag: 'சாகுபடி',
-      title: 'பயிர் சாகுபடி',
-      question: 'நெல் பயிர் சாகுபடி முறைகளை எவ்வாறு மேம்படுத்துவது?',
+      title: 'பயிர் சாகுபடி வழிகாட்டுதல்',
+      desc: 'விதை நேர்த்தி, நிலம் தயாரிப்பு மற்றும் நடவு முறைகள்',
+      question: 'பயிர் விளைச்சலையும் மண் வளத்தையும் அதிகரிக்க சிறந்த சாகுபடி முறைகள் யாவை?',
+      color: '#15803d',
     },
     {
-      icon: '🦠',
-      tag: 'பாதுகாப்பு',
-      title: 'நோய் மற்றும் பூச்சி மேலாண்மை',
-      question: 'பயிர் நோய்கள் மற்றும் பூச்சிகளை எவ்வாறு கட்டுப்படுத்துவது?',
+      id: 'irrigation-guidance',
+      icon: '💧',
+      title: 'நீர்ப்பாசன வழிகாட்டுதல்',
+      desc: 'சொட்டு நீர் பாசனம் மற்றும் நீர் மேலாண்மை முறைகள்',
+      question: 'பயிர்களுக்கான உகந்த நீர்ப்பாசன அட்டவணை மற்றும் நீர் சேமிப்பு முறைகள் என்ன?',
+      color: '#0369a1',
     },
     {
-      icon: '🧪',
-      tag: 'உரங்கள்',
-      title: 'உர மேலாண்மை',
-      question: 'பயிர்களுக்கு தழை, சாம்பல் சத்து உரங்கள் எவ்வாறு இட வேண்டும்?',
-    },
-    {
-      icon: '📋',
-      tag: 'திட்டங்கள்',
+      id: 'gov-schemes',
+      icon: '🏛️',
       title: 'அரசு திட்டங்கள்',
-      question: 'விவசாயிகளுக்கு என்னென்ன அரசு திட்டங்களும் மானியங்களும் உள்ளன?',
+      desc: 'விவசாய மானியங்கள், பயிர் காப்பீடு மற்றும் உதவிகள்',
+      question: 'விவசாயிகளுக்கு என்னென்ன அரசு திட்டங்கள், மானியங்கள் மற்றும் உதவிகள் உள்ளன?',
+      color: '#7c3aed',
     },
   ],
 };
 
 export default function WelcomeScreen({ onSelectSuggestion, language = 'en' }) {
   const isTamil = language === 'ta';
-  const currentSuggestions = isTamil ? SUGGESTIONS.ta : SUGGESTIONS.en;
+  const suggestions = isTamil ? SUGGESTIONS.ta : SUGGESTIONS.en;
 
   return (
-    <section className="welcome-container" aria-label="Welcome and Suggestions">
-      {/* Background Decorative Agricultural Elements */}
-      <div className="welcome-decor-container" aria-hidden="true">
-        <svg className="welcome-decor-svg decor-left" viewBox="0 0 100 100" fill="none">
-          <path d="M10 90C30 70 45 40 40 10C55 35 65 60 90 85" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" opacity="0.3" />
-          <path d="M25 80C40 60 60 45 75 35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.2" />
-        </svg>
-        <svg className="welcome-decor-svg decor-right" viewBox="0 0 100 100" fill="none">
-          <path d="M90 90C70 70 55 40 60 10C45 35 35 60 10 85" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" opacity="0.3" />
-          <path d="M75 80C60 60 40 45 25 35" stroke="currentColor" strokeWidth="2" strokeLinecap="round" opacity="0.2" />
-        </svg>
-      </div>
+    <div className="agriguide-welcome-area" aria-label="Welcome and Agriculture Guidance">
+      {/* ── Top Hero Banner with Realistic Agriculture Imagery ──────── */}
+      <div className="welcome-banner-card">
+        <div className="welcome-banner-img-wrap">
+          <img
+            src="/agri-hero-field.jpg"
+            alt="Terraced agricultural paddy fields at sunrise"
+            className="welcome-banner-img"
+          />
+          <div className="welcome-banner-overlay" />
+        </div>
 
-      {/* Central Sprout Hero Icon */}
-      <div className="welcome-hero-icon-container">
-        <div className="welcome-hero-sprout-halo">
-          <Sprout size={38} className="welcome-hero-sprout" strokeWidth={2.3} />
+        <div className="welcome-banner-content">
+          <div className="welcome-tag-pill">
+            <Sparkles size={13} className="sparkle-icon" />
+            <span>
+              {isTamil
+                ? 'RAG AI தொழில்நுட்பத்தில் இயங்கும் விவசாய வழிகாட்டி'
+                : 'Intelligent RAG Agriculture Advisory'}
+            </span>
+          </div>
+
+          <div className="welcome-main-heading">
+            <span className="welcome-seed-emoji" role="img" aria-label="Sprout">
+              🌱
+            </span>
+            <h2>
+              {isTamil ? 'வணக்கம்! AgriGuide-க்கு வரவேற்கிறோம்' : 'Welcome to AgriGuide'}
+            </h2>
+          </div>
+
+          <p className="welcome-lead-text">
+            {isTamil
+              ? 'பயிர் வழிகாட்டல், நோய் மேலாண்மை, உரங்கள், பூச்சி மேலாண்மை மற்றும் அரசு திட்டங்களுக்கான உங்கள் அறிவார்ந்த விவசாய உதவியாளர்.'
+              : 'Your intelligent agriculture assistant for crop guidance, disease management, fertilizers, pest management and government schemes.'}
+          </p>
         </div>
       </div>
 
-      <div className="welcome-hero-badge">
-        <Sparkles size={14} className="welcome-badge-sparkle" />
-        <span>
-          {isTamil
-            ? 'RAG அடிப்படையில் இயங்கும் விவசாய AI வழிகாட்டி'
-            : 'RAG-Powered Agriculture AI Advisory'}
-        </span>
-      </div>
+      {/* ── 6 Agriculture Suggestion Cards ──────────────────────────── */}
+      <div className="welcome-cards-section">
+        <div className="welcome-cards-title">
+          <Sprout size={16} className="title-sprout-icon" />
+          <span>
+            {isTamil ? 'அடிக்கடி கேட்கப்படும் விவசாய தலைப்புகள்' : 'Recommended Agriculture Topics'}
+          </span>
+        </div>
 
-      <h2 className="welcome-title">
-        {isTamil
-          ? 'AgriGuide-க்கு நல்வரவு'
-          : 'Welcome to AgriGuide'}
-      </h2>
-      <p className="welcome-subtitle">
-        {isTamil
-          ? 'பயிர் சாகுபடி, நோய்கள், பூச்சி கட்டுப்பாடு, உர மேலாண்மை மற்றும் அரசு திட்டங்கள் குறித்த உங்கள் விவசாய கேள்விகளை கேளுங்கள்.'
-          : 'Your intelligent agriculture assistant for practical farming guidance, crop health, fertilizer advisory, and agricultural schemes.'}
-      </p>
-
-      {/* Suggestion Cards */}
-      <div className="suggestions-grid" role="region" aria-label="Suggested topics">
-        {currentSuggestions.map((item, index) => (
-          <button
-            key={index}
-            type="button"
-            className="suggestion-card"
-            onClick={() => onSelectSuggestion(item.question)}
-            aria-label={`Ask: ${item.question}`}
-          >
-            <div className="suggestion-header">
-              <div className="suggestion-icon-tag-wrap">
-                <span className="suggestion-icon" role="img" aria-hidden="true">
-                  {item.icon}
+        <div className="welcome-cards-grid" role="region" aria-label="Quick suggestion cards">
+          {suggestions.map((card) => (
+            <button
+              key={card.id}
+              type="button"
+              className="agri-suggestion-card"
+              onClick={() => onSelectSuggestion && onSelectSuggestion(card.question)}
+              aria-label={`Ask AgriGuide: ${card.question}`}
+            >
+              <div className="card-top-row">
+                <span className="card-emoji" role="img" aria-hidden="true">
+                  {card.icon}
                 </span>
-                <span className="suggestion-category-tag">{item.tag}</span>
+                <div className="card-action-icon" aria-hidden="true">
+                  <ArrowRight size={14} />
+                </div>
               </div>
-              <div className="suggestion-arrow-wrap">
-                <ArrowRight size={14} className="suggestion-arrow" />
-              </div>
-            </div>
-            <div className="suggestion-title">{item.title}</div>
-            <p className="suggestion-prompt">{item.question}</p>
-          </button>
-        ))}
-      </div>
 
-      <div className="welcome-footer-prompt">
-        <span>
-          {isTamil
-            ? 'கீழே உள்ள உள்ளீட்டுப் பெட்டியில் உங்கள் கேள்வியைத் தட்டச்சு செய்யவும் அல்லது குரல் மூலம் கேட்கவும்'
-            : 'Type your agriculture question below, or use voice input to speak'}
-        </span>
+              <div className="card-text-block">
+                <strong className="card-title">{card.title}</strong>
+                <p className="card-desc">{card.desc}</p>
+              </div>
+
+              <div className="card-bottom-prompt">
+                <span>"{card.question}"</span>
+              </div>
+            </button>
+          ))}
+        </div>
       </div>
-    </section>
+    </div>
   );
 }

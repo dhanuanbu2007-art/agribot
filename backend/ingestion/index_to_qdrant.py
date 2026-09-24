@@ -5,7 +5,6 @@ from qdrant_client.models import PointStruct
 
 
 def index_documents():
-
     print("Preparing chunks from all documents...")
 
     chunks = prepare_chunks()
@@ -18,44 +17,55 @@ def index_documents():
 
     texts = [chunk["text"] for chunk in chunks]
 
-    print("Creating BGE-M3 embeddings...")
+    print("Creating Gemini Embedding 2 document embeddings...")
 
+    # create_embeddings() already uses
+    # RETRIEVAL_DOCUMENT internally.
     embeddings = create_embeddings(texts)
 
     print("Embeddings created:", len(embeddings))
+
+    if len(embeddings) != len(chunks):
+        raise RuntimeError(
+            f"Embedding count mismatch: "
+            f"{len(embeddings)} embeddings for "
+            f"{len(chunks)} chunks."
+        )
 
     points = []
 
     for index, (chunk, embedding) in enumerate(
         zip(chunks, embeddings)
     ):
-
         points.append(
             PointStruct(
                 id=index,
-                vector=embedding.tolist(),
+                vector=embedding,
                 payload={
                     "document_name": chunk["document_name"],
                     "category": chunk["category"],
                     "page_number": chunk["page_number"],
-                    "text": chunk["text"]
-                }
+                    "text": chunk["text"],
+                },
             )
         )
 
-    print("Uploading vectors to Qdrant...")
+    print(
+        f"Uploading {len(points)} vectors to "
+        f"Qdrant collection '{COLLECTION_NAME}'..."
+    )
 
     client.upload_points(
         collection_name=COLLECTION_NAME,
-        points=points
+        points=points,
     )
 
     print("Documents indexed successfully!")
-
     print("Total vectors stored:", len(points))
-
-    client.close()
 
 
 if __name__ == "__main__":
-    index_documents()
+    try:
+        index_documents()
+    finally:
+        client.close()
