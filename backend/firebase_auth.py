@@ -2,16 +2,19 @@
 AgriGuide — Firebase Admin SDK Authentication
 ==============================================
 
-Initializes Firebase Admin SDK using a service-account JSON file
-referenced by the GOOGLE_APPLICATION_CREDENTIALS environment variable.
+Initializes Firebase Admin SDK using a service-account JSON file or string
+referenced by FIREBASE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS.
 
-This module is intentionally designed for local Windows development
-with an explicit service-account credential file.
+Supports:
+- Local Windows development (via file path in GOOGLE_APPLICATION_CREDENTIALS)
+- Cloud/Render deployment (via raw JSON string or Secret File path in
+  FIREBASE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS)
 
 DO NOT commit service-account JSON files to Git.
 DO NOT hardcode private keys in this file.
 """
 
+import json
 import os
 import sys
 from pathlib import Path
@@ -48,45 +51,63 @@ FIREBASE_PROJECT_ID = "agriguide-838da"
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _get_credential_path() -> str:
+def _build_credential() -> credentials.Certificate:
     """
-    Read the service-account JSON path from the environment variable
-    GOOGLE_APPLICATION_CREDENTIALS.
+    Build a firebase_admin.credentials.Certificate from either:
+    1. A raw JSON string or file path in FIREBASE_SERVICE_ACCOUNT_JSON
+    2. A file path or raw JSON string in GOOGLE_APPLICATION_CREDENTIALS
 
-    Raises a clear RuntimeError if:
-    - the environment variable is not set
-    - the file does not exist at the specified path
+    Raises a clear RuntimeError if credentials are missing or invalid.
     """
-    env_var = "GOOGLE_APPLICATION_CREDENTIALS"
-    credential_path = os.environ.get(env_var, "").strip()
+    # 1. Check FIREBASE_SERVICE_ACCOUNT_JSON (recommended for Render cloud env vars)
+    raw_env_json = os.environ.get("FIREBASE_SERVICE_ACCOUNT_JSON", "").strip()
+    if raw_env_json:
+        if raw_env_json.startswith("{"):
+            try:
+                cert_dict = json.loads(raw_env_json)
+                return credentials.Certificate(cert_dict)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to parse FIREBASE_SERVICE_ACCOUNT_JSON as valid JSON: {exc}"
+                ) from exc
+        elif os.path.isfile(raw_env_json):
+            try:
+                return credentials.Certificate(raw_env_json)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to load service-account certificate from file '{raw_env_json}': {exc}"
+                ) from exc
 
-    if not credential_path:
-        raise RuntimeError(
-            "GOOGLE_APPLICATION_CREDENTIALS is not set. "
-            "Please set GOOGLE_APPLICATION_CREDENTIALS in backend/.env or your environment "
-            "pointing to your Firebase service-account JSON file."
-        )
+    # 2. Check GOOGLE_APPLICATION_CREDENTIALS (standard GCP env var, supports file path or raw JSON)
+    cred_val = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "").strip()
+    if cred_val:
+        if cred_val.startswith("{"):
+            try:
+                cert_dict = json.loads(cred_val)
+                return credentials.Certificate(cert_dict)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to parse GOOGLE_APPLICATION_CREDENTIALS as valid JSON: {exc}"
+                ) from exc
+        elif os.path.isfile(cred_val):
+            try:
+                return credentials.Certificate(cred_val)
+            except Exception as exc:
+                raise RuntimeError(
+                    f"Failed to load service-account certificate from file '{cred_val}': {exc}"
+                ) from exc
+        else:
+            raise RuntimeError(
+                f"Firebase credential file could not be found at: {cred_val}. "
+                "Please verify the file path specified in GOOGLE_APPLICATION_CREDENTIALS."
+            )
 
-    if not os.path.isfile(credential_path):
-        raise RuntimeError(
-            f"Firebase credential file could not be found at: {credential_path}. "
-            f"Please verify the file path specified in GOOGLE_APPLICATION_CREDENTIALS."
-        )
-
-    return credential_path
-
-
-def _build_credential(credential_path: str) -> credentials.Certificate:
-    """
-    Build a firebase_admin.credentials.Certificate from the JSON file.
-    Raises RuntimeError with a clear message on failure without printing keys.
-    """
-    try:
-        return credentials.Certificate(credential_path)
-    except Exception as exc:
-        raise RuntimeError(
-            f"Failed to load Firebase service-account JSON certificate from '{credential_path}': {exc}"
-        ) from exc
+    # 3. Neither environment variable is configured
+    raise RuntimeError(
+        "Neither GOOGLE_APPLICATION_CREDENTIALS nor FIREBASE_SERVICE_ACCOUNT_JSON is set. "
+        "For local development: set GOOGLE_APPLICATION_CREDENTIALS to your local service-account JSON path in backend/.env. "
+        "For Render/cloud deployment: set FIREBASE_SERVICE_ACCOUNT_JSON with the contents of your service-account JSON."
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -95,11 +116,11 @@ def _build_credential(credential_path: str) -> credentials.Certificate:
 
 def initialize_firebase() -> firebase_admin.App:
     """
-    Initialize Firebase Admin SDK using the service-account JSON file.
+    Initialize Firebase Admin SDK.
 
     - If the app is already initialized, returns the existing default app.
     - Uses credentials.Certificate() (explicit credentials) so it works
-      reliably on local Windows without GCP ADC configured.
+      reliably on local Windows and Linux cloud hosts (Render).
     - Explicitly sets projectId to FIREBASE_PROJECT_ID matching frontend/src/firebase.js.
 
     Called once at module import time.
@@ -108,8 +129,7 @@ def initialize_firebase() -> firebase_admin.App:
     if firebase_admin._apps:
         return firebase_admin.get_app()
 
-    credential_path = _get_credential_path()
-    cred = _build_credential(credential_path)
+    cred = _build_credential()
 
     try:
         app = firebase_admin.initialize_app(
