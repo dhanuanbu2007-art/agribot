@@ -104,7 +104,15 @@ body {
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow: hidden;
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
+}
+
+/* Ensure no elements can cause horizontal scroll */
+img, video, canvas, svg {
+  max-width: 100%;
+  height: auto;
 }
 
 ul, ol { list-style: none; }
@@ -996,6 +1004,8 @@ textarea, input { font-family: var(--font); }
   line-height: 1.7;
   color: var(--text-700);
   word-break: break-word;
+  overflow-wrap: break-word;
+  max-width: 100%;
 }
 
 .markdown-render-area p { margin-bottom: 10px; }
@@ -1050,6 +1060,9 @@ textarea, input { font-family: var(--font); }
   margin: 10px 0;
   font-size: 13px;
   line-height: 1.6;
+  max-width: 100%;
+  white-space: pre-wrap;
+  word-break: keep-all;
 }
 
 .markdown-render-area pre code {
@@ -1065,6 +1078,9 @@ textarea, input { font-family: var(--font); }
   width: 100%;
   margin: 12px 0;
   font-size: 13px;
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 
 .markdown-render-area th {
@@ -1540,6 +1556,8 @@ textarea, input { font-family: var(--font); }
     z-index: 250;
     transform: translateX(-100%);
     box-shadow: var(--shadow-xl);
+    width: 280px;
+    max-width: 85vw;
   }
 
   .agriguide-sidebar.open {
@@ -1571,7 +1589,19 @@ textarea, input { font-family: var(--font); }
 }
 
 @media (max-width: 480px) {
-  .agriguide-header { padding: 0 12px; }
+  .agriguide-header { padding: 0 10px; gap: 8px; }
+  .header-left { gap: 8px; }
+  .header-icon-box { display: none; }
+  .header-title { font-size: 16px; }
+  
   .lang-pill-selector { display: none; }
   .welcome-banner-card { height: 150px; }
+  
+  .msg-bubble-box { max-width: 95%; padding: 10px 14px; }
+  .messages-inner { padding: 12px 10px 8px; }
+  
+  .agriguide-input-area { padding: 8px 10px 12px; }
+  .input-box-container { padding: 8px 10px; gap: 6px; }
+  .chat-textarea { font-size: 14px; }
+  .chat-mic-btn, .chat-send-btn { width: 34px; height: 34px; }
 }

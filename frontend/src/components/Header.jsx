@@ -46,14 +46,17 @@ export default function Header({
             className={`lang-pill-btn ${language === 'en' ? 'active' : ''}`}
             onClick={() => onLanguageChange && onLanguageChange('en')}
             aria-pressed={language === 'en'}
+            title="English"
           >
-            English
+            <span className="lang-full">English</span>
+            <span className="lang-short">EN</span>
           </button>
           <button
             type="button"
             className={`lang-pill-btn ${language === 'ta' ? 'active' : ''}`}
             onClick={() => onLanguageChange && onLanguageChange('ta')}
             aria-pressed={language === 'ta'}
+            title="தமிழ் (Tamil)"
           >
             தமிழ்
           </button>
