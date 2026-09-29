@@ -8,15 +8,13 @@ import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
-import { sendChatMessage, checkHealth } from "./services/api";
+import { sendChatMessage, checkHealth, getHistory, saveHistory } from "./services/api";
 
 import "./app.css";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
-
-const STORAGE_KEY = "agriguide_conversations";
 
 function createNewConversation() {
   return {
@@ -26,18 +24,6 @@ function createNewConversation() {
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
-}
-
-function loadConversations() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return [createNewConversation()];
-    const parsed = JSON.parse(saved);
-    if (!Array.isArray(parsed) || parsed.length === 0) return [createNewConversation()];
-    return parsed;
-  } catch {
-    return [createNewConversation()];
-  }
 }
 
 function getTitle(question) {
@@ -56,10 +42,11 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
 
   // Conversations
-  const [conversations, setConversations] = useState(loadConversations);
-  const [activeConversationId, setActiveConversationId] = useState(
-    () => loadConversations()[0]?.id || null
-  );
+  const [conversations, setConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState(null);
+  
+  // Track if initial history load is complete
+  const [historyLoaded, setHistoryLoaded] = useState(false);
 
   // UI state
   const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth > 768);
@@ -72,8 +59,35 @@ export default function App() {
 
   // ── Firebase Auth Listener ────────────────────────────────────────────────
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      
+      if (currentUser) {
+        try {
+          const idToken = await currentUser.getIdToken();
+          const history = await getHistory(idToken);
+          
+          if (Array.isArray(history) && history.length > 0) {
+            setConversations(history);
+            setActiveConversationId(history[0].id);
+          } else {
+            const newConv = createNewConversation();
+            setConversations([newConv]);
+            setActiveConversationId(newConv.id);
+          }
+        } catch (err) {
+          console.error("Failed to load history:", err);
+          const newConv = createNewConversation();
+          setConversations([newConv]);
+          setActiveConversationId(newConv.id);
+        }
+      } else {
+        // Clear state on logout
+        setConversations([]);
+        setActiveConversationId(null);
+      }
+      
+      setHistoryLoaded(true);
       setAuthLoading(false);
     });
     return unsubscribe;
@@ -81,8 +95,14 @@ export default function App() {
 
   // ── Persist Conversations ─────────────────────────────────────────────────
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(conversations));
-  }, [conversations]);
+    if (user && historyLoaded) {
+      user.getIdToken().then((idToken) => {
+        saveHistory(conversations, idToken).catch(err => {
+          console.error("Failed to save history:", err);
+        });
+      });
+    }
+  }, [conversations, user, historyLoaded]);
 
   // ── Backend Health Check ──────────────────────────────────────────────────
   useEffect(() => {
@@ -194,7 +214,7 @@ export default function App() {
 
     try {
       const idToken = await user.getIdToken();
-      const response = await sendChatMessage(trimmedQuestion, idToken);
+      const response = await sendChatMessage(trimmedQuestion, conversationId, idToken);
 
       const assistantMessage = {
         id: crypto.randomUUID(),

@@ -1,4 +1,5 @@
-const DIRECT_API_URL = "http://127.0.0.1:8000";
+const LOCAL_API_URL = "http://127.0.0.1:8000";
+const PROD_API_URL = "https://agriguide-backend-mzok.onrender.com";
 
 const PROXY_ENABLED = import.meta.env.DEV;
 
@@ -8,7 +9,7 @@ const CONFIGURED_API_URL = (
 
 const BASE_URL = PROXY_ENABLED
   ? ""
-  : (CONFIGURED_API_URL || DIRECT_API_URL);
+  : (CONFIGURED_API_URL || PROD_API_URL);
 
 
 // --------------------------------------------------
@@ -62,6 +63,7 @@ export async function checkHealth() {
 
 export async function sendChatMessage(
   question,
+  conversationId,
   idToken = null
 ) {
   if (!question || !question.trim()) {
@@ -85,10 +87,41 @@ export async function sendChatMessage(
       headers,
       body: JSON.stringify({
         question: question.trim(),
+        conversation_id: conversationId,
       }),
     }
   );
 
+  return parseResponse(response);
+}
+
+// --------------------------------------------------
+// History Management
+// --------------------------------------------------
+
+export async function getHistory(idToken) {
+  const headers = { Accept: "application/json" };
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
+
+  const response = await fetch(`${BASE_URL}/history`, {
+    method: "GET",
+    headers,
+  });
+  return parseResponse(response);
+}
+
+export async function saveHistory(conversations, idToken) {
+  const headers = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  };
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
+
+  const response = await fetch(`${BASE_URL}/history`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(conversations),
+  });
   return parseResponse(response);
 }
 

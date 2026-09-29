@@ -24,6 +24,12 @@ export default defineConfig(({ mode }) => {
           timeout: 15000,
           proxyTimeout: 15000,
         },
+        '/history': {
+          target: proxyTarget,
+          changeOrigin: true,
+          timeout: 15000,
+          proxyTimeout: 15000,
+        },
       },
     },
   };

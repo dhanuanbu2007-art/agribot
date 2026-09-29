@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from backend.firebase_auth import verify_firebase_token
 from backend.rag.chat import AgriGuideChat
+from backend.app import history_db
 
 
 # ==================================================
@@ -61,10 +62,10 @@ app.add_middleware(
 
 
 # ==================================================
-# RAG Chatbot
+# RAG Chatbot Sessions
 # ==================================================
 
-chatbot = AgriGuideChat()
+chatbots = {}  # conversation_id -> AgriGuideChat
 
 
 # ==================================================
@@ -73,6 +74,7 @@ chatbot = AgriGuideChat()
 
 class ChatRequest(BaseModel):
     question: str
+    conversation_id: str
 
 
 # ==================================================
@@ -130,6 +132,10 @@ def get_current_user(
 # Root Endpoint
 # ==================================================
 
+@app.on_event("startup")
+def startup_event():
+    history_db.init_db()
+
 @app.get("/")
 def root():
     return {
@@ -164,6 +170,7 @@ def chat(
     """
 
     question = request.question.strip()
+    conversation_id = request.conversation_id.strip() if request.conversation_id else "default"
 
     if not question:
         raise HTTPException(
@@ -179,6 +186,21 @@ def chat(
             status_code=401,
             detail="Authenticated user UID is missing.",
         )
+
+    # Scoped chatbot instance
+    if conversation_id not in chatbots:
+        new_bot = AgriGuideChat()
+        # Hydrate from history if available
+        conversations = history_db.get_user_history(user_uid)
+        for conv in conversations:
+            if conv.get("id") == conversation_id:
+                for msg in conv.get("messages", []):
+                    if msg.get("role") == "user":
+                        new_bot.state.update(msg.get("content", ""))
+                break
+        chatbots[conversation_id] = new_bot
+    
+    chatbot = chatbots[conversation_id]
 
     try:
         answer = chatbot.chat(question)
@@ -197,6 +219,26 @@ def chat(
             status_code=500,
             detail="Failed to generate answer.",
         ) from exc
+
+
+# ==================================================
+# History Endpoints
+# ==================================================
+
+@app.get("/history")
+def get_history(current_user: dict = Depends(get_current_user)):
+    user_uid = current_user.get("uid")
+    conversations = history_db.get_user_history(user_uid)
+    return conversations
+
+@app.post("/history")
+def save_history(
+    conversations: list,
+    current_user: dict = Depends(get_current_user)
+):
+    user_uid = current_user.get("uid")
+    history_db.save_user_history(user_uid, conversations)
+    return {"status": "success"}
 
 
 # ==================================================
