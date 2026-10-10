@@ -949,6 +949,33 @@ textarea, input { font-family: var(--font); }
   animation: micPulse 1s ease-in-out infinite;
 }
 
+.msg-tts-error-toast {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  margin-bottom: 6px;
+  padding: 4px 10px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--r-xs);
+  font-size: 12px;
+  color: #991b1b;
+}
+
+.msg-tts-error-close {
+  background: none;
+  border: none;
+  color: #b91c1c;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
 /* Bubbles */
 .msg-bubble-box {
   border-radius: var(--r-lg);

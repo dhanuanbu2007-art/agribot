@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Sprout, User, AlertTriangle, Volume2, VolumeX } from 'lucide-react';
+import { Sprout, User, AlertTriangle, Volume2, VolumeX, X } from 'lucide-react';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import SourceCard from './SourceCard';
@@ -42,6 +42,7 @@ function formatTimestamp(timeValue) {
 
 /**
  * Strips markdown markup to prepare clean text for text-to-speech
+ * Preserves Tamil Unicode characters (\u0B80 - \u0BFF) and general punctuation
  */
 function cleanTextForSpeech(text) {
   if (!text) return '';
@@ -50,8 +51,9 @@ function cleanTextForSpeech(text) {
   clean = clean.replace(/\*?\(?\s*(?:Sources?|References?|Source Note):?[\s\S]*?\)?\*?/gi, '');
   // Remove markdown links [text](url) -> text
   clean = clean.replace(/\[([^\]]+)\]\([^)]+\)/g, '$1');
-  // Remove markdown headers, bold, italics, code blocks
+  // Remove markdown formatting symbols like *, _, #, `, >, ~
   clean = clean.replace(/[\*\_#`>~]/g, '');
+  // Remove list bullets / numbering at start of lines
   clean = clean.replace(/^(?:\s*[-+*]|\s*\d+\.)\s+/gm, '');
   return clean.trim();
 }
@@ -59,20 +61,26 @@ function cleanTextForSpeech(text) {
 /**
  * Find suitable voice from browser SpeechSynthesis
  */
-function getBestVoice(langCode) {
-  if (typeof window === 'undefined' || !window.speechSynthesis) return null;
-  const voices = window.speechSynthesis.getVoices();
+function getBestVoice(voices, langCode) {
   if (!voices || voices.length === 0) return null;
 
-  const targetLang = langCode.toLowerCase().replace('_', '-');
-  const targetPrefix = targetLang.split('-')[0];
+  const targetLang = langCode.toLowerCase().replace('_', '-'); // e.g. "ta-in"
+  const targetPrefix = targetLang.split('-')[0]; // e.g. "ta"
 
-  // Exact match (e.g. ta-IN or en-IN)
+  // 1. Exact language match (e.g. ta-IN or ta_IN)
   let voice = voices.find((v) => v.lang && v.lang.toLowerCase().replace('_', '-') === targetLang);
   if (voice) return voice;
 
-  // Prefix match (e.g. ta or en)
+  // 2. Prefix language match (e.g. ta)
   voice = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith(targetPrefix));
+  if (voice) return voice;
+
+  // 3. Name match (voice name contains "tamil" or "ta-in")
+  voice = voices.find(
+    (v) =>
+      v.name &&
+      (v.name.toLowerCase().includes('tamil') || v.name.toLowerCase().includes('ta-in'))
+  );
   if (voice) return voice;
 
   return null;
@@ -84,6 +92,8 @@ export default function ChatMessage({ message, language = 'en' }) {
   const isError = Boolean(message.isError);
 
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voices, setVoices] = useState([]);
+  const [ttsError, setTtsError] = useState(null);
   const utteranceRef = useRef(null);
 
   const { body, sources } = useMemo(() => {
@@ -92,6 +102,24 @@ export default function ChatMessage({ message, language = 'en' }) {
   }, [isUser, rawText]);
 
   const time = formatTimestamp(message.timestamp);
+
+  // Load browser voices asynchronously (handles onvoiceschanged event)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+
+    const updateVoices = () => {
+      const avail = window.speechSynthesis.getVoices();
+      if (avail && avail.length > 0) {
+        setVoices(avail);
+      }
+    };
+
+    updateVoices();
+
+    if (window.speechSynthesis.onvoiceschanged !== undefined) {
+      window.speechSynthesis.onvoiceschanged = updateVoices;
+    }
+  }, []);
 
   // Stop speech on unmount
   useEffect(() => {
@@ -105,46 +133,96 @@ export default function ChatMessage({ message, language = 'en' }) {
   }, [isSpeaking]);
 
   const handleToggleSpeech = () => {
-    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    console.log('[TTS Debug] Speaker button clicked for message:', { isUser, isError, bodySnippet: body?.slice(0, 40) });
+
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      console.warn('[TTS Debug] SpeechSynthesis is not supported by window');
+      setTtsError('Text-to-speech is not supported in this browser.');
+      return;
+    }
 
     if (isSpeaking) {
+      console.log('[TTS Debug] Stopping current speech');
       window.speechSynthesis.cancel();
       setIsSpeaking(false);
       return;
     }
 
-    // Cancel any current speech in progress across the app
+    // Always cancel any existing speech across the browser before starting new utterance
     window.speechSynthesis.cancel();
+    setTtsError(null);
 
     const printableText = cleanTextForSpeech(body);
-    if (!printableText) return;
+    console.log('[TTS Debug] Raw body length:', body?.length, '| Clean text length:', printableText?.length);
+    console.log('[TTS Debug] Clean text snippet:', printableText?.slice(0, 80));
+
+    if (!printableText) {
+      console.warn('[TTS Debug] Text is empty after markdown cleaning');
+      return;
+    }
 
     // Detect Tamil text vs English text
     const hasTamil = /[\u0B80-\u0BFF]/.test(printableText);
     const langCode = hasTamil ? 'ta-IN' : (language === 'ta' ? 'ta-IN' : 'en-IN');
 
+    console.log('[TTS Debug] Language detection:', { hasTamil, langCode });
+
+    // Fetch latest available voices
+    let currentVoices = voices;
+    if (!currentVoices || currentVoices.length === 0) {
+      currentVoices = window.speechSynthesis.getVoices() || [];
+    }
+
+    console.log('[TTS Debug] Total available browser voices:', currentVoices.length);
+
+    const selectedVoice = getBestVoice(currentVoices, langCode);
+    console.log('[TTS Debug] Selected voice:', selectedVoice ? `${selectedVoice.name} (${selectedVoice.lang})` : 'NONE (Using browser default)');
+
     const utterance = new SpeechSynthesisUtterance(printableText);
     utterance.lang = langCode;
 
-    const voice = getBestVoice(langCode);
-    if (voice) {
-      utterance.voice = voice;
+    if (selectedVoice) {
+      utterance.voice = selectedVoice;
     }
 
+    utterance.onstart = () => {
+      console.log('[TTS Debug] Utterance onstart event fired');
+      setIsSpeaking(true);
+    };
+
     utterance.onend = () => {
+      console.log('[TTS Debug] Utterance onend event fired');
       setIsSpeaking(false);
       utteranceRef.current = null;
     };
 
-    utterance.onerror = (err) => {
-      console.warn('[TTS] Speech error:', err);
+    utterance.onerror = (event) => {
+      console.error('[TTS Debug] Utterance onerror event fired:', event.error || event);
       setIsSpeaking(false);
       utteranceRef.current = null;
+
+      if (event.error === 'language-unavailable' || event.error === 'voice-unavailable') {
+        setTtsError(
+          hasTamil
+            ? 'Tamil speech is unavailable in your browser/OS. Please install Tamil speech data or try Google Chrome.'
+            : 'English speech voice is unavailable in your browser.'
+        );
+      } else if (event.error !== 'interrupted' && event.error !== 'canceled') {
+        setTtsError('Failed to play audio answer. Please try again.');
+      }
     };
 
     utteranceRef.current = utterance;
     setIsSpeaking(true);
-    window.speechSynthesis.speak(utterance);
+
+    try {
+      console.log('[TTS Debug] Executing window.speechSynthesis.speak() with lang =', utterance.lang);
+      window.speechSynthesis.speak(utterance);
+    } catch (err) {
+      console.error('[TTS Debug] Exception when calling speak():', err);
+      setIsSpeaking(false);
+      setTtsError('Failed to start speech playback.');
+    }
   };
 
   const isTtsSupported = typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -186,6 +264,21 @@ export default function ChatMessage({ message, language = 'en' }) {
             </button>
           )}
         </div>
+
+        {/* TTS Error Toast */}
+        {ttsError && (
+          <div className="msg-tts-error-toast" role="alert">
+            <span>{ttsError}</span>
+            <button
+              type="button"
+              className="msg-tts-error-close"
+              onClick={() => setTtsError(null)}
+              aria-label="Dismiss TTS error"
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
         <div className={`msg-bubble-box ${isUser ? 'bubble-user' : 'bubble-assistant'}`}>
           {isUser ? (
