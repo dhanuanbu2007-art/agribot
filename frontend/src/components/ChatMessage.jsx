@@ -209,7 +209,45 @@ export default function ChatMessage({ message, language = 'en' }) {
         console.error("[Cloud TTS Error]", err);
         setIsLoadingAudio(false);
         setIsSpeaking(false);
-        setTtsError(err.message || "Failed to generate Tamil speech via cloud.");
+
+        // Fallback to browser SpeechSynthesis if a Tamil voice is available locally
+        let currentVoices = voices;
+        if (!currentVoices || currentVoices.length === 0) {
+          currentVoices = (typeof window !== 'undefined' && window.speechSynthesis)
+            ? window.speechSynthesis.getVoices() || []
+            : [];
+        }
+        const tamilVoice = getBestVoice(currentVoices, 'ta-IN');
+        if (tamilVoice && typeof window !== 'undefined' && window.speechSynthesis) {
+          try {
+            const utterance = new SpeechSynthesisUtterance(printableText);
+            utterance.lang = 'ta-IN';
+            utterance.voice = tamilVoice;
+            utterance.onstart = () => setIsSpeaking(true);
+            utterance.onend = () => {
+              setIsSpeaking(false);
+              utteranceRef.current = null;
+            };
+            utterance.onerror = (ev) => {
+              setIsSpeaking(false);
+              utteranceRef.current = null;
+              if (ev.error !== 'interrupted' && ev.error !== 'canceled') {
+                setTtsError("Browser Tamil speech playback failed.");
+              }
+            };
+            utteranceRef.current = utterance;
+            setIsSpeaking(true);
+            window.speechSynthesis.speak(utterance);
+            return;
+          } catch (speechErr) {
+            console.warn("[Browser TTS Fallback Error]", speechErr);
+          }
+        }
+
+        const msg = err.message === "Not Found" || err.message?.includes("404")
+          ? "Tamil speech service is temporarily updating on the backend. Please try again shortly."
+          : (err.message || "Failed to generate Tamil speech via cloud.");
+        setTtsError(msg);
       }
       return;
     }

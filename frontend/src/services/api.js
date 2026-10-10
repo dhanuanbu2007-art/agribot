@@ -155,6 +155,9 @@ export async function generateTamilTTS(text, idToken = null) {
       const data = await response.json();
       errMsg = data?.detail || data?.message || errMsg;
     } catch {}
+    if (response.status === 404) {
+      errMsg = "Tamil TTS service endpoint not found on backend (404).";
+    }
     throw new Error(errMsg);
   }
 

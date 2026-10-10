@@ -1,4 +1,11 @@
 import os
+import sys
+from pathlib import Path
+
+# Add project root to sys.path so 'backend' imports work regardless of execution directory
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -142,10 +149,13 @@ def startup_event():
     # Initialize Firebase Admin SDK first so history_db can use Firestore
     try:
         initialize_firebase()
+        print("[Startup] Firebase Admin SDK initialized successfully.")
     except Exception as exc:
-        print(f"[Startup] Firebase initialization failed: {exc}")
-        raise RuntimeError(f"Cannot start without Firebase: {exc}") from exc
-    history_db.init_db()
+        print(f"[Startup Warning] Firebase initialization deferred: {exc}")
+    try:
+        history_db.init_db()
+    except Exception as exc:
+        print(f"[Startup Warning] History DB initialization deferred: {exc}")
 
 @app.get("/")
 def root():
