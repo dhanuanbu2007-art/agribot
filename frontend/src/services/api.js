@@ -161,7 +161,8 @@ export async function generateTamilTTS(text, idToken = null) {
     throw new Error(errMsg);
   }
 
-  const blob = await response.blob();
+  const arrayBuffer = await response.arrayBuffer();
+  const blob = new Blob([arrayBuffer], { type: "audio/mpeg" });
   return URL.createObjectURL(blob);
 }
 

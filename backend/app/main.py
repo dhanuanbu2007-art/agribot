@@ -7,7 +7,7 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -308,9 +308,16 @@ def generate_tamil_tts(
             response = client.synthesize_speech(
                 input=synthesis_input, voice=voice, audio_config=audio_config
             )
-            return StreamingResponse(
-                io.BytesIO(response.audio_content), 
-                media_type="audio/mpeg"
+            audio_bytes = response.audio_content
+            return Response(
+                content=audio_bytes, 
+                media_type="audio/mpeg",
+                headers={
+                    "Content-Disposition": "inline; filename=speech.mp3",
+                    "Content-Length": str(len(audio_bytes)),
+                    "Accept-Ranges": "bytes",
+                    "Cache-Control": "no-cache",
+                }
             )
         except Exception as e:
             print(f"[Google Cloud TTS Error] {e} - Falling back to gTTS")
@@ -321,10 +328,16 @@ def generate_tamil_tts(
         tts = gTTS(text, lang='ta')
         fp = io.BytesIO()
         tts.write_to_fp(fp)
-        fp.seek(0)
-        return StreamingResponse(
-            fp, 
-            media_type="audio/mpeg"
+        audio_bytes = fp.getvalue()
+        return Response(
+            content=audio_bytes, 
+            media_type="audio/mpeg",
+            headers={
+                "Content-Disposition": "inline; filename=speech.mp3",
+                "Content-Length": str(len(audio_bytes)),
+                "Accept-Ranges": "bytes",
+                "Cache-Control": "no-cache",
+            }
         )
     except Exception as e:
         print(f"[gTTS Error] {e}")

@@ -130,20 +130,22 @@ export default function ChatMessage({ message, language = 'en' }) {
   useEffect(() => {
     return () => {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
-        if (isSpeaking) {
-          window.speechSynthesis.cancel();
-        }
+        window.speechSynthesis.cancel();
       }
       if (audioObjRef.current) {
+        audioObjRef.current.onerror = null;
+        audioObjRef.current.onended = null;
+        audioObjRef.current.onplay = null;
         audioObjRef.current.pause();
         const src = audioObjRef.current.src;
         audioObjRef.current.src = "";
         if (src && src.startsWith("blob:")) {
           URL.revokeObjectURL(src);
         }
+        audioObjRef.current = null;
       }
     };
-  }, [isSpeaking]);
+  }, []);
 
   const handleToggleSpeech = async () => {
     if (isSpeaking || isLoadingAudio) {
@@ -151,8 +153,17 @@ export default function ChatMessage({ message, language = 'en' }) {
         window.speechSynthesis.cancel();
       }
       if (audioObjRef.current) {
+        audioObjRef.current.onerror = null;
+        audioObjRef.current.onended = null;
+        audioObjRef.current.onplay = null;
         audioObjRef.current.pause();
         audioObjRef.current.currentTime = 0;
+        const src = audioObjRef.current.src;
+        audioObjRef.current.src = "";
+        if (src && src.startsWith("blob:")) {
+          URL.revokeObjectURL(src);
+        }
+        audioObjRef.current = null;
       }
       setIsSpeaking(false);
       setIsLoadingAudio(false);
@@ -163,8 +174,16 @@ export default function ChatMessage({ message, language = 'en' }) {
       window.speechSynthesis.cancel();
     }
     if (audioObjRef.current) {
+      audioObjRef.current.onerror = null;
+      audioObjRef.current.onended = null;
+      audioObjRef.current.onplay = null;
       audioObjRef.current.pause();
-      audioObjRef.current.currentTime = 0;
+      const oldSrc = audioObjRef.current.src;
+      audioObjRef.current.src = "";
+      if (oldSrc && oldSrc.startsWith("blob:")) {
+        URL.revokeObjectURL(oldSrc);
+      }
+      audioObjRef.current = null;
     }
     
     setTtsError(null);
@@ -194,17 +213,35 @@ export default function ChatMessage({ message, language = 'en' }) {
         
         audio.onended = () => {
           setIsSpeaking(false);
+          if (audioObjRef.current === audio) {
+            audioObjRef.current = null;
+          }
           URL.revokeObjectURL(audioUrl);
         };
         
-        audio.onerror = () => {
+        audio.onerror = (e) => {
+          console.error("[Audio Playback Error Event]", e, audio.error);
           setIsLoadingAudio(false);
           setIsSpeaking(false);
-          setTtsError("Failed to play Tamil audio.");
+          if (audioObjRef.current === audio) {
+            audioObjRef.current = null;
+          }
+          const detail = audio.error?.message || (audio.error?.code ? `(error code ${audio.error.code})` : "");
+          setTtsError(`Failed to play Tamil audio ${detail}`.trim());
           URL.revokeObjectURL(audioUrl);
         };
         
-        await audio.play();
+        try {
+          await audio.play();
+        } catch (playErr) {
+          if (playErr.name !== 'AbortError') {
+            console.error("[Audio Play Catch]", playErr);
+            setIsLoadingAudio(false);
+            setIsSpeaking(false);
+            setTtsError(playErr.message || "Failed to start Tamil audio playback.");
+          }
+        }
+        return;
       } catch (err) {
         console.error("[Cloud TTS Error]", err);
         setIsLoadingAudio(false);
