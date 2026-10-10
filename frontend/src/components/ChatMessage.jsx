@@ -183,6 +183,9 @@ export default function ChatMessage({ message, language = 'en' }) {
 
     if (selectedVoice) {
       utterance.voice = selectedVoice;
+    } else if (hasTamil) {
+      // Warn the user that no specific Tamil voice was found, but still attempt speech
+      setTtsError('No Tamil voice found. Attempting to use default browser voice, which may not sound correct.');
     }
 
     utterance.onstart = () => {
