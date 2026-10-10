@@ -285,12 +285,24 @@ export default function ChatMessage({ message, language = 'en' }) {
           {!isUser && !isError && isTtsSupported && body && (
             <button
               type="button"
-              className={`msg-speaker-btn ${isSpeaking ? 'speaking' : ''}`}
+              className={`msg-speaker-btn ${isSpeaking ? 'speaking' : ''} ${isLoadingAudio ? 'loading' : ''}`}
               onClick={handleToggleSpeech}
-              title={isSpeaking ? (language === 'ta' ? 'வாசிப்பதை நிறுத்து' : 'Stop speaking') : (language === 'ta' ? 'பதிலை உரக்க வாசி' : 'Read answer aloud')}
-              aria-label={isSpeaking ? 'Stop speaking' : 'Read answer aloud'}
+              disabled={isLoadingAudio}
+              title={
+                isLoadingAudio
+                  ? 'Generating audio...'
+                  : isSpeaking
+                  ? (language === 'ta' ? 'வாசிப்பதை நிறுத்து' : 'Stop speaking')
+                  : (language === 'ta' ? 'பதிலை உரக்க வாசி' : 'Read answer aloud')
+              }
+              aria-label={isLoadingAudio ? 'Generating audio' : isSpeaking ? 'Stop speaking' : 'Read answer aloud'}
             >
-              {isSpeaking ? <VolumeX size={15} /> : <Volume2 size={15} />}
+              {isLoadingAudio
+                ? <Loader2 size={15} className="spin-icon" />
+                : isSpeaking
+                ? <VolumeX size={15} />
+                : <Volume2 size={15} />
+              }
             </button>
           )}
         </div>

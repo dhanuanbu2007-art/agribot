@@ -54,6 +54,16 @@ desktop.ini
 .vscode/
 .idea/
 
+# --- Local SQLite databases (replaced by Firestore in production) ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Generated test/temp audio files ---
+*.mp3
+*.wav
+*.ogg
+
 # --- Documents (local knowledge base source files — optional) ---
 # Uncomment if you do NOT want to upload the raw PDFs/text to GitHub:
 # documents/

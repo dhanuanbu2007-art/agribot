@@ -6,7 +6,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import io
 
-from backend.firebase_auth import verify_firebase_token
+from backend.firebase_auth import verify_firebase_token, initialize_firebase
 from backend.rag.chat import AgriGuideChat
 from backend.app import history_db
 
@@ -139,6 +139,12 @@ def get_current_user(
 
 @app.on_event("startup")
 def startup_event():
+    # Initialize Firebase Admin SDK first so history_db can use Firestore
+    try:
+        initialize_firebase()
+    except Exception as exc:
+        print(f"[Startup] Firebase initialization failed: {exc}")
+        raise RuntimeError(f"Cannot start without Firebase: {exc}") from exc
     history_db.init_db()
 
 @app.get("/")
@@ -234,8 +240,14 @@ def chat(
 @app.get("/history")
 def get_history(current_user: dict = Depends(get_current_user)):
     user_uid = current_user.get("uid")
-    conversations = history_db.get_user_history(user_uid)
-    return conversations
+    if not user_uid:
+        raise HTTPException(status_code=401, detail="Authenticated user UID is missing.")
+    try:
+        conversations = history_db.get_user_history(user_uid)
+        return conversations
+    except RuntimeError as exc:
+        print(f"[History] get_history Firestore unavailable: {exc}")
+        raise HTTPException(status_code=503, detail="History service temporarily unavailable.")
 
 @app.post("/history")
 def save_history(
@@ -243,8 +255,14 @@ def save_history(
     current_user: dict = Depends(get_current_user)
 ):
     user_uid = current_user.get("uid")
-    history_db.save_user_history(user_uid, conversations)
-    return {"status": "success"}
+    if not user_uid:
+        raise HTTPException(status_code=401, detail="Authenticated user UID is missing.")
+    try:
+        history_db.save_user_history(user_uid, conversations)
+        return {"status": "success"}
+    except RuntimeError as exc:
+        print(f"[History] save_history Firestore unavailable: {exc}")
+        raise HTTPException(status_code=503, detail="History service temporarily unavailable.")
 
 
 # ==================================================
