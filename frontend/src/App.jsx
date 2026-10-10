@@ -60,6 +60,7 @@ export default function App() {
   // ── Firebase Auth Listener ────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setHistoryLoaded(false);
       setUser(currentUser);
       
       if (currentUser) {
@@ -75,19 +76,22 @@ export default function App() {
             setConversations([newConv]);
             setActiveConversationId(newConv.id);
           }
+          setHistoryLoaded(true);
         } catch (err) {
-          console.error("Failed to load history:", err);
+          console.error("[AgriGuide] Failed to load history from backend:", err);
           const newConv = createNewConversation();
           setConversations([newConv]);
           setActiveConversationId(newConv.id);
+          // Keep historyLoaded false if backend fetch failed so we don't overwrite DB with blank state
+          setHistoryLoaded(false);
         }
       } else {
         // Clear state on logout
         setConversations([]);
         setActiveConversationId(null);
+        setHistoryLoaded(false);
       }
       
-      setHistoryLoaded(true);
       setAuthLoading(false);
     });
     return unsubscribe;
@@ -95,10 +99,10 @@ export default function App() {
 
   // ── Persist Conversations ─────────────────────────────────────────────────
   useEffect(() => {
-    if (user && historyLoaded) {
+    if (user && historyLoaded && Array.isArray(conversations)) {
       user.getIdToken().then((idToken) => {
         saveHistory(conversations, idToken).catch(err => {
-          console.error("Failed to save history:", err);
+          console.error("[AgriGuide] Failed to save history to backend:", err);
         });
       });
     }

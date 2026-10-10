@@ -55,7 +55,7 @@ export default function ChatWindow({
         ) : (
           <div className="messages-inner">
             {messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} />
+              <ChatMessage key={msg.id} message={msg} language={language} />
             ))}
 
             {isLoading && <LoadingIndicator language={language} />}

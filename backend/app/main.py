@@ -187,8 +187,9 @@ def chat(
             detail="Authenticated user UID is missing.",
         )
 
-    # Scoped chatbot instance
-    if conversation_id not in chatbots:
+    # Scoped chatbot instance per user & conversation
+    chat_key = f"{user_uid}:{conversation_id}"
+    if chat_key not in chatbots:
         new_bot = AgriGuideChat()
         # Hydrate from history if available
         conversations = history_db.get_user_history(user_uid)
@@ -198,9 +199,9 @@ def chat(
                     if msg.get("role") == "user":
                         new_bot.state.update(msg.get("content", ""))
                 break
-        chatbots[conversation_id] = new_bot
+        chatbots[chat_key] = new_bot
     
-    chatbot = chatbots[conversation_id]
+    chatbot = chatbots[chat_key]
 
     try:
         answer = chatbot.chat(question)
