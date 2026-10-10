@@ -136,7 +136,11 @@ export default function ChatMessage({ message, language = 'en' }) {
       }
       if (audioObjRef.current) {
         audioObjRef.current.pause();
+        const src = audioObjRef.current.src;
         audioObjRef.current.src = "";
+        if (src && src.startsWith("blob:")) {
+          URL.revokeObjectURL(src);
+        }
       }
     };
   }, [isSpeaking]);
@@ -190,12 +194,14 @@ export default function ChatMessage({ message, language = 'en' }) {
         
         audio.onended = () => {
           setIsSpeaking(false);
+          URL.revokeObjectURL(audioUrl);
         };
         
         audio.onerror = () => {
           setIsLoadingAudio(false);
           setIsSpeaking(false);
           setTtsError("Failed to play Tamil audio.");
+          URL.revokeObjectURL(audioUrl);
         };
         
         await audio.play();

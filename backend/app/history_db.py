@@ -1,30 +1,38 @@
-import sqlite3
 import json
-from pathlib import Path
+import firebase_admin
+from firebase_admin import firestore
 
-DB_PATH = Path(__file__).parent.parent.parent / "history.db"
+def _get_db():
+    # Ensure Firebase is initialized
+    if not firebase_admin._apps:
+        from backend import firebase_auth
+        firebase_auth.initialize_firebase()
+    return firestore.client()
 
 def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS user_history (
-                user_uid TEXT PRIMARY KEY,
-                data TEXT NOT NULL
-            )
-        ''')
+    # Firestore creates collections/documents automatically on first write
+    pass
 
 def get_user_history(user_uid: str) -> list:
-    with sqlite3.connect(DB_PATH) as conn:
-        cur = conn.cursor()
-        cur.execute("SELECT data FROM user_history WHERE user_uid = ?", (user_uid,))
-        row = cur.fetchone()
-        if row:
-            return json.loads(row[0])
+    try:
+        db = _get_db()
+        doc_ref = db.collection('user_history').document(user_uid)
+        doc = doc_ref.get()
+        if doc.exists:
+            data = doc.to_dict().get('data', '[]')
+            return json.loads(data)
+        return []
+    except Exception as e:
+        print(f"[History DB Error] Failed to get history for {user_uid}: {e}")
         return []
 
 def save_user_history(user_uid: str, conversations: list):
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute(
-            "INSERT OR REPLACE INTO user_history (user_uid, data) VALUES (?, ?)",
-            (user_uid, json.dumps(conversations))
-        )
+    try:
+        db = _get_db()
+        doc_ref = db.collection('user_history').document(user_uid)
+        doc_ref.set({
+            'user_uid': user_uid,
+            'data': json.dumps(conversations)
+        })
+    except Exception as e:
+        print(f"[History DB Error] Failed to save history for {user_uid}: {e}")

@@ -5,3 +5,5 @@ qdrant-client
 google-genai
 python-dotenv
 firebase-admin
+gTTS
+google-cloud-texttospeech
