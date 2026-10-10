@@ -7,3 +7,4 @@ python-dotenv
 firebase-admin
 gTTS
 google-cloud-texttospeech
+python-multipart
