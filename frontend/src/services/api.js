@@ -127,6 +127,43 @@ export async function saveHistory(conversations, idToken) {
 
 
 // --------------------------------------------------
+// TTS Management
+// --------------------------------------------------
+
+export async function generateTamilTTS(text, idToken = null) {
+  if (!text || !text.trim()) {
+    throw new Error("Text cannot be empty.");
+  }
+
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  if (idToken) {
+    headers.Authorization = `Bearer ${idToken}`;
+  }
+
+  const response = await fetch(`${BASE_URL}/tts/tamil`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ text: text.trim() }),
+  });
+
+  if (!response.ok) {
+    let errMsg = `Request failed with status ${response.status}`;
+    try {
+      const data = await response.json();
+      errMsg = data?.detail || data?.message || errMsg;
+    } catch {}
+    throw new Error(errMsg);
+  }
+
+  const blob = await response.blob();
+  return URL.createObjectURL(blob);
+}
+
+
+// --------------------------------------------------
 // Export API configuration
 // --------------------------------------------------
 

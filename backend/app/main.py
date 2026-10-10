@@ -2,7 +2,9 @@ import os
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+import io
 
 from backend.firebase_auth import verify_firebase_token
 from backend.rag.chat import AgriGuideChat
@@ -75,6 +77,9 @@ chatbots = {}  # conversation_id -> AgriGuideChat
 class ChatRequest(BaseModel):
     question: str
     conversation_id: str
+
+class TTSRequest(BaseModel):
+    text: str
 
 
 # ==================================================
@@ -240,6 +245,65 @@ def save_history(
     user_uid = current_user.get("uid")
     history_db.save_user_history(user_uid, conversations)
     return {"status": "success"}
+
+
+# ==================================================
+# TTS Endpoint (Cloud TTS for Tamil)
+# ==================================================
+
+@app.post("/tts/tamil")
+def generate_tamil_tts(
+    request: TTSRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Generate Tamil Text-to-Speech using a Cloud Provider.
+    Falls back to gTTS if Google Cloud credentials are not configured.
+    """
+    text = request.text.strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty.")
+    
+    # 1. Try Google Cloud TTS (Premium) if GOOGLE_APPLICATION_CREDENTIALS exists
+    if "GOOGLE_APPLICATION_CREDENTIALS" in os.environ:
+        try:
+            from google.cloud import texttospeech
+            client = texttospeech.TextToSpeechClient()
+            synthesis_input = texttospeech.SynthesisInput(text=text)
+            voice = texttospeech.VoiceSelectionParams(
+                language_code="ta-IN",
+                name="ta-IN-Standard-A"
+            )
+            audio_config = texttospeech.AudioConfig(
+                audio_encoding=texttospeech.AudioEncoding.MP3
+            )
+            response = client.synthesize_speech(
+                input=synthesis_input, voice=voice, audio_config=audio_config
+            )
+            return StreamingResponse(
+                io.BytesIO(response.audio_content), 
+                media_type="audio/mpeg"
+            )
+        except Exception as e:
+            print(f"[Google Cloud TTS Error] {e} - Falling back to gTTS")
+            
+    # 2. Fallback to gTTS (Free, no API keys required)
+    try:
+        from gtts import gTTS
+        tts = gTTS(text, lang='ta')
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return StreamingResponse(
+            fp, 
+            media_type="audio/mpeg"
+        )
+    except Exception as e:
+        print(f"[gTTS Error] {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to generate Tamil speech from cloud providers."
+        ) from e
 
 
 # ==================================================
