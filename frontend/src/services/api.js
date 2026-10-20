@@ -64,7 +64,9 @@ export async function checkHealth() {
 export async function sendChatMessage(
   question,
   conversationId,
-  idToken = null
+  idToken = null,
+  userMessageId = null,
+  assistantMessageId = null
 ) {
   if (!question || !question.trim()) {
     throw new Error("Question cannot be empty.");
@@ -80,15 +82,19 @@ export async function sendChatMessage(
     headers.Authorization = `Bearer ${idToken}`;
   }
 
+  const payload = {
+    question: question.trim(),
+    conversation_id: conversationId,
+  };
+  if (userMessageId) payload.user_message_id = userMessageId;
+  if (assistantMessageId) payload.assistant_message_id = assistantMessageId;
+
   const response = await fetch(
     `${BASE_URL}/chat`,
     {
       method: "POST",
       headers,
-      body: JSON.stringify({
-        question: question.trim(),
-        conversation_id: conversationId,
-      }),
+      body: JSON.stringify(payload),
     }
   );
 
@@ -121,6 +127,17 @@ export async function saveHistory(conversations, idToken) {
     method: "POST",
     headers,
     body: JSON.stringify(conversations),
+  });
+  return parseResponse(response);
+}
+
+export async function deleteConversation(conversationId, idToken) {
+  const headers = { Accept: "application/json" };
+  if (idToken) headers.Authorization = `Bearer ${idToken}`;
+
+  const response = await fetch(`${BASE_URL}/history/${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
+    headers,
   });
   return parseResponse(response);
 }

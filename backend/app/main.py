@@ -7,11 +7,12 @@ ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Response
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import io
+import uuid
 
 from backend.firebase_auth import verify_firebase_token, initialize_firebase
 from backend.rag.chat import AgriGuideChat
@@ -83,7 +84,9 @@ chatbots = {}  # conversation_id -> AgriGuideChat
 
 class ChatRequest(BaseModel):
     question: str
-    conversation_id: str
+    conversation_id: str | None = None
+    user_message_id: str | None = None
+    assistant_message_id: str | None = None
 
 class TTSRequest(BaseModel):
     text: str
@@ -187,11 +190,15 @@ def chat(
     ),
 ):
     """
-    Authenticated RAG chat endpoint.
+    Authenticated RAG chat endpoint with automatic Firestore conversation persistence.
     """
 
     question = request.question.strip()
-    conversation_id = request.conversation_id.strip() if request.conversation_id else "default"
+    conversation_id = (
+        request.conversation_id.strip()
+        if request.conversation_id and request.conversation_id.strip()
+        else str(uuid.uuid4())
+    )
 
     if not question:
         raise HTTPException(
@@ -213,34 +220,54 @@ def chat(
     if chat_key not in chatbots:
         new_bot = AgriGuideChat()
         # Hydrate from history if available
-        conversations = history_db.get_user_history(user_uid)
-        for conv in conversations:
-            if conv.get("id") == conversation_id:
-                for msg in conv.get("messages", []):
-                    if msg.get("role") == "user":
-                        new_bot.state.update(msg.get("content", ""))
-                break
+        try:
+            conversations = history_db.get_user_history(user_uid)
+            for conv in conversations:
+                if conv.get("id") == conversation_id:
+                    for msg in conv.get("messages", []):
+                        if msg.get("role") == "user":
+                            new_bot.state.update(msg.get("content", ""))
+                    break
+        except Exception as exc:
+            print(f"[Hydration Warning] Context hydration deferred: {exc}")
         chatbots[chat_key] = new_bot
     
     chatbot = chatbots[chat_key]
 
     try:
         answer = chatbot.chat(question)
-
-        return {
-            "question": question,
-            "answer": answer,
-        }
-
     except Exception as exc:
         print(
             f"[AgriGuide Chat Error] {exc}"
         )
-
         raise HTTPException(
             status_code=500,
             detail="Failed to generate answer.",
         ) from exc
+
+    # Persist question and answer pair to Firestore
+    try:
+        updated_conv = history_db.append_chat_turn(
+            user_uid=user_uid,
+            conversation_id=conversation_id,
+            question=question,
+            answer=answer,
+            user_msg_id=request.user_message_id,
+            assistant_msg_id=request.assistant_message_id,
+        )
+    except Exception as exc:
+        print(f"[History Save Error] Failed to persist chat turn: {exc}")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to persist conversation history to database.",
+        ) from exc
+
+    return {
+        "question": question,
+        "answer": answer,
+        "conversation_id": conversation_id,
+        "conversation": updated_conv,
+    }
 
 
 # ==================================================
@@ -255,13 +282,13 @@ def get_history(current_user: dict = Depends(get_current_user)):
     try:
         conversations = history_db.get_user_history(user_uid)
         return conversations
-    except RuntimeError as exc:
+    except Exception as exc:
         print(f"[History] get_history Firestore unavailable: {exc}")
         raise HTTPException(status_code=503, detail="History service temporarily unavailable.")
 
 @app.post("/history")
 def save_history(
-    conversations: list,
+    conversations: list = Body(...),
     current_user: dict = Depends(get_current_user)
 ):
     user_uid = current_user.get("uid")
@@ -270,9 +297,26 @@ def save_history(
     try:
         history_db.save_user_history(user_uid, conversations)
         return {"status": "success"}
-    except RuntimeError as exc:
+    except ValueError as val_err:
+        raise HTTPException(status_code=400, detail=str(val_err))
+    except Exception as exc:
         print(f"[History] save_history Firestore unavailable: {exc}")
         raise HTTPException(status_code=503, detail="History service temporarily unavailable.")
+
+@app.delete("/history/{conversation_id}")
+def delete_history_item(
+    conversation_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    user_uid = current_user.get("uid")
+    if not user_uid:
+        raise HTTPException(status_code=401, detail="Authenticated user UID is missing.")
+    try:
+        remaining = history_db.delete_user_conversation(user_uid, conversation_id)
+        return {"status": "success", "conversations": remaining}
+    except Exception as exc:
+        print(f"[History] delete_history failed: {exc}")
+        raise HTTPException(status_code=503, detail="Failed to delete conversation.")
 
 
 # ==================================================

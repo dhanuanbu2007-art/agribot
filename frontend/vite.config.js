@@ -30,6 +30,12 @@ export default defineConfig(({ mode }) => {
           timeout: 15000,
           proxyTimeout: 15000,
         },
+        '/tts': {
+          target: proxyTarget,
+          changeOrigin: true,
+          timeout: 30000,
+          proxyTimeout: 30000,
+        },
       },
     },
   };

@@ -8,7 +8,7 @@ import Header from "./components/Header";
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
-import { sendChatMessage, checkHealth, getHistory, saveHistory } from "./services/api";
+import { sendChatMessage, checkHealth, getHistory, saveHistory, deleteConversation } from "./services/api";
 
 import "./app.css";
 
@@ -97,17 +97,6 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  // ── Persist Conversations ─────────────────────────────────────────────────
-  useEffect(() => {
-    if (user && historyLoaded && Array.isArray(conversations)) {
-      user.getIdToken().then((idToken) => {
-        saveHistory(conversations, idToken).catch(err => {
-          console.error("[AgriGuide] Failed to save history to backend:", err);
-        });
-      });
-    }
-  }, [conversations, user, historyLoaded]);
-
   // ── Backend Health Check ──────────────────────────────────────────────────
   useEffect(() => {
     let mounted = true;
@@ -159,21 +148,31 @@ export default function App() {
   };
 
   // ── Delete Conversation ───────────────────────────────────────────────────
-  const handleDeleteConversation = (event, conversationId) => {
+  const handleDeleteConversation = async (event, conversationId) => {
     if (event) event.stopPropagation();
 
-    setConversations((prev) => {
-      const remaining = prev.filter((c) => c.id !== conversationId);
-      if (remaining.length === 0) {
-        const fresh = createNewConversation();
-        setActiveConversationId(fresh.id);
-        return [fresh];
+    const remaining = conversations.filter((c) => c.id !== conversationId);
+    let nextActiveId = activeConversationId;
+    if (conversationId === activeConversationId) {
+      nextActiveId = remaining.length > 0 ? remaining[0].id : null;
+    }
+    if (remaining.length === 0) {
+      const fresh = createNewConversation();
+      setConversations([fresh]);
+      setActiveConversationId(fresh.id);
+    } else {
+      setConversations(remaining);
+      setActiveConversationId(nextActiveId);
+    }
+
+    if (user) {
+      try {
+        const idToken = await user.getIdToken();
+        await deleteConversation(conversationId, idToken);
+      } catch (err) {
+        console.error("[AgriGuide] Failed to delete conversation on server:", err);
       }
-      if (conversationId === activeConversationId) {
-        setActiveConversationId(remaining[0].id);
-      }
-      return remaining;
-    });
+    }
   };
 
   // ── Send Message ──────────────────────────────────────────────────────────
@@ -193,8 +192,9 @@ export default function App() {
       setActiveConversationId(conversationId);
     }
 
+    const userMessageId = crypto.randomUUID();
     const userMessage = {
-      id: crypto.randomUUID(),
+      id: userMessageId,
       role: "user",
       content: trimmedQuestion,
       timestamp: Date.now(),
@@ -218,10 +218,16 @@ export default function App() {
 
     try {
       const idToken = await user.getIdToken();
-      const response = await sendChatMessage(trimmedQuestion, conversationId, idToken);
+      const response = await sendChatMessage(
+        trimmedQuestion,
+        conversationId,
+        idToken,
+        userMessageId
+      );
 
+      const serverConv = response?.conversation;
       const assistantMessage = {
-        id: crypto.randomUUID(),
+        id: serverConv?.messages?.slice(-1)[0]?.id || crypto.randomUUID(),
         role: "assistant",
         content:
           response?.answer ||
@@ -234,6 +240,7 @@ export default function App() {
           if (conv.id !== conversationId) return conv;
           return {
             ...conv,
+            title: serverConv?.title || conv.title,
             messages: [...conv.messages, assistantMessage],
             updatedAt: Date.now(),
           };

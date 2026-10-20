@@ -197,4 +197,9 @@ def verify_firebase_token(id_token: str) -> dict:
 # Initialize on module import
 # ---------------------------------------------------------------------------
 
-initialize_firebase()
+try:
+    initialize_firebase()
+except Exception as _init_exc:
+    print(
+        f"[AgriGuide Firebase] Startup initialization deferred: {_init_exc}"
+    )
